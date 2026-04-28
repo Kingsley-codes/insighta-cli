@@ -67,7 +67,8 @@ export async function profilesListCommand(opts: ListOptions): Promise<void> {
   } catch (error: any) {
     spinner.fail("Failed to fetch profiles");
     printError(error.message);
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
 }
 
@@ -88,7 +89,8 @@ export async function profilesGetCommand(id: string): Promise<void> {
   } catch (error: any) {
     spinner.fail("Profile not found");
     printError(error.message);
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
 }
 
@@ -136,7 +138,8 @@ export async function profilesSearchCommand(
   } catch (error: any) {
     spinner.fail("Search failed");
     printError(error.message);
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
 }
 
@@ -151,7 +154,8 @@ export async function profilesCreateCommand(
 ): Promise<void> {
   if (!opts.name || !opts.name.trim()) {
     printError("Name is required. Use: insighta profiles create --name \"Full Name\"");
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
 
   const spinner = ora(
@@ -170,7 +174,8 @@ export async function profilesCreateCommand(
   } catch (error: any) {
     spinner.fail("Failed to create profile");
     printError(error.message);
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
 }
 
@@ -192,7 +197,8 @@ export async function profilesExportCommand(
 ): Promise<void> {
   if (opts.format !== "csv") {
     printError("Only CSV format is currently supported.");
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
 
   const spinner = ora("Exporting profiles as CSV…").start();
@@ -227,7 +233,8 @@ export async function profilesExportCommand(
   } catch (error: any) {
     spinner.fail("Export failed");
     printError(error.message);
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
 }
 

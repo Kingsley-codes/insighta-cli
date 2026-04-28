@@ -6,8 +6,8 @@ import {
   clearCredentials,
 } from "./credentials.js";
 
-const API_URL = process.env.INSIGHTA_API_URL || "http://localhost:3000";
-const API_VERSION = "1";
+const API_URL = process.env.INSIGHTA_API_URL || "http://localhost:4000";
+const API_VERSION = "1.0";
 
 interface ApiResponse<T = unknown> {
   status: "success" | "error";
@@ -113,7 +113,7 @@ export async function apiRequest<T = unknown>(
       console.error(
         chalk.red("✖ Not authenticated. Run `insighta login` first."),
       );
-      process.exit(1);
+      throw new Error("Not authenticated. Run `insighta login` first.");
     }
     accessToken = creds.access_token;
   }
@@ -134,7 +134,9 @@ export async function apiRequest<T = unknown>(
           "✖ Session expired. Please run `insighta login` to authenticate again.",
         ),
       );
-      process.exit(1);
+      throw new Error(
+        "Session expired. Please run `insighta login` to authenticate again.",
+      );
     }
   }
 

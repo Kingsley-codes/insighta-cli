@@ -131,20 +131,26 @@ function startCallbackServer(
         const callbackUrl = new URL(`${API_URL}/auth/github/callback`);
         callbackUrl.searchParams.set("code", code);
         callbackUrl.searchParams.set("state", state);
+        callbackUrl.searchParams.set("code_verifier", codeVerifier);
+        callbackUrl.searchParams.set("client_type", "cli");
 
-        // Send code_verifier and client_type to backend
         const response = await fetch(callbackUrl.toString(), {
-          method: "POST", // Using POST to send sensitive data in body
+          method: "GET",
           headers: {
-            "Content-Type": "application/json",
+            Accept: "application/json",
           },
-          body: JSON.stringify({
-            code_verifier: codeVerifier,
-            client_type: "cli",
-          }),
         });
+        const contentType = response.headers.get("content-type") || "";
+        const rawBody = await response.text();
+        let data: any;
 
-        const data = await response.json();
+        if (contentType.includes("application/json")) {
+          data = JSON.parse(rawBody);
+        } else {
+          throw new Error(
+            `Backend returned ${response.status} ${response.statusText} with non-JSON response`,
+          );
+        }
 
         if (data.status !== "success") {
           throw new Error(data.message || "Failed to authenticate");
@@ -258,7 +264,8 @@ export async function loginCommand(): Promise<void> {
   } catch (error: any) {
     spinner.fail("Authentication failed");
     printError(error.message || "Unknown error during login");
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
 }
 
@@ -290,7 +297,8 @@ export async function whoamiCommand(): Promise<void> {
 
   if (!creds) {
     printError("Not authenticated. Run `insighta login` first.");
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
 
   const spinner = ora("Fetching user info…").start();
@@ -326,7 +334,8 @@ export async function whoamiCommand(): Promise<void> {
   } catch (error: any) {
     spinner.fail("Failed to fetch user info");
     printError(error.message);
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
 }
 

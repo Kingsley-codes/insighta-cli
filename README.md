@@ -152,7 +152,7 @@ The CLI passes the access token (which contains the role claim) on every request
 insighta (CLI)
     │
     │  Bearer <access_token>
-    │  X-API-Version: 1
+    │  X-API-Version: 1.0
     ▼
 Backend API  (Express + TypeScript)
     │
