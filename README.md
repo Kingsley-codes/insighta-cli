@@ -1,89 +1,173 @@
-markdown
+# Insighta Labs+ CLI
 
-# Insighta CLI
-
-Command-line interface for Insighta Labs+ Profile Intelligence Platform.
+A command-line interface for the **Insighta Labs+ Profile Intelligence System**.
 
 ## Installation
 
 ```bash
-npm install -g insighta-cli
-Configuration
-Set the API URL (optional):
+npm install
+npm run build
+npm link          # makes `insighta` available globally
+```
 
-bash
-export INSIGHTA_API_URL=https://your-backend-url.com
-Usage
-Authentication
-bash
-# Login with GitHub
+Or install directly:
+
+```bash
+npm install -g .
+```
+
+## Configuration
+
+Copy `.env.example` to `.env` and set the backend URL:
+
+```bash
+cp .env.example .env
+# Edit .env:
+INSIGHTA_API_URL=https://your-backend-url.com
+```
+
+---
+
+## Authentication
+
+### Login
+
+```bash
 insighta login
+```
 
-# Check current user
-insighta whoami
+- Generates PKCE `code_verifier` + `code_challenge` locally
+- Starts a temporary local callback server on port `9876`
+- Opens GitHub OAuth in your browser
+- On callback, exchanges the code with the backend using your `code_verifier`
+- Saves tokens to `~/.insighta/credentials.json` (mode `600`)
 
-# Logout
+### Logout
+
+```bash
 insighta logout
-Profile Management
-bash
-# List profiles with filters
+```
+
+Revokes the refresh token server-side and clears local credentials.
+
+### Whoami
+
+```bash
+insighta whoami
+```
+
+Displays the currently authenticated user's info.
+
+---
+
+## Profile Commands
+
+### List profiles
+
+```bash
 insighta profiles list
-insighta profiles list --gender male --country NG
+insighta profiles list --gender male
+insighta profiles list --country NG --age-group adult
 insighta profiles list --min-age 25 --max-age 40
-insighta profiles list --sort-by age --order desc --page 2 --limit 20
+insighta profiles list --sort-by age --order desc
+insighta profiles list --page 2 --limit 20
+```
 
-# Get profile by ID
-insighta profiles get <profile-id>
+**Options:**
 
-# Search with natural language
+| Flag | Description |
+|------|-------------|
+| `--gender` | Filter by `male` or `female` |
+| `--country` | Filter by ISO country code (e.g. `NG`, `KE`) |
+| `--age-group` | Filter by `teenager`, `adult`, or `senior` |
+| `--min-age` | Minimum age |
+| `--max-age` | Maximum age |
+| `--sort-by` | `age`, `created_at`, or `gender_probability` |
+| `--order` | `asc` or `desc` |
+| `--page` | Page number (default: 1) |
+| `--limit` | Results per page, max 50 (default: 10) |
+
+### Get a profile by ID
+
+```bash
+insighta profiles get <id>
+```
+
+### Search using natural language
+
+```bash
 insighta profiles search "young males from nigeria"
 insighta profiles search "females above 30"
+insighta profiles search "adult males from kenya"
+```
 
-# Create profile (admin only)
-insighta profiles create --name "Harriet Tubman"
+### Create a profile (admin only)
 
-# Export to CSV
+```bash
+insighta profiles create --name "Amara Nwosu"
+```
+
+Calls Genderize, Agify, and Nationalize APIs and stores the enriched profile.
+
+### Export profiles to CSV
+
+```bash
 insighta profiles export --format csv
-insighta profiles export --gender male --country NG
+insighta profiles export --format csv --gender male --country NG
+```
 
-# Delete profile (admin only)
-insighta profiles delete <profile-id>
-Token Storage
-Credentials are stored securely at ~/.insighta/credentials.json with 600 permissions.
+Saves the CSV to the current working directory as `profiles_<timestamp>.csv`.
 
-Features
-✅ GitHub OAuth with PKCE
+---
 
-✅ Automatic token refresh
+## Token Handling
 
-✅ Rich table output
+- **Access token**: short-lived (3 minutes)
+- **Refresh token**: slightly longer-lived (5 minutes)
+- **Auto-refresh**: on any `401` response, the CLI automatically attempts to refresh the access token using the stored refresh token
+- **Re-login prompt**: if refresh fails (token expired/revoked), credentials are cleared and the user is prompted to `insighta login` again
 
-✅ Loading spinners
+Credentials are stored at `~/.insighta/credentials.json` with permissions `600`.
 
-✅ Natural language search
+---
 
-✅ CSV export
+## Role Enforcement
 
-✅ Role-based access control
+| Command | Required Role |
+|---------|--------------|
+| `profiles list` | `analyst` or `admin` |
+| `profiles get` | `analyst` or `admin` |
+| `profiles search` | `analyst` or `admin` |
+| `profiles export` | `analyst` or `admin` |
+| `profiles create` | `admin` only |
+| `profiles delete` (API) | `admin` only |
 
-text
+The CLI passes the access token (which contains the role claim) on every request. The backend enforces RBAC — the CLI will surface a `403 Insufficient permissions` error if the user's role is insufficient.
 
-## Summary
+---
 
-Now we have:
+## Architecture
 
-1. **Rate limiting & logging** - In-memory rate limiter with file-based logs
-2. **Refactored profile routes** - With auth middleware, CSV export, and updated pagination with links
-3. **CLI tool** - Full-featured CLI with token storage, auto-refresh, and rich output
+```
+insighta (CLI)
+    │
+    │  Bearer <access_token>
+    │  X-API-Version: 1
+    ▼
+Backend API  (Express + TypeScript)
+    │
+    ├── /auth/*        (GitHub OAuth + PKCE, JWT issuance)
+    └── /api/profiles  (CRUD, search, export)
+```
 
-The system now has:
-- ✅ GitHub OAuth with PKCE
-- ✅ Role-based access (admin/analyst)
-- ✅ Token management (3 min access, 5 min refresh)
-- ✅ API versioning
-- ✅ Rate limiting (10/min auth, 60/min other)
-- ✅ Request logging
-- ✅ CSV export
-- ✅ Updated pagination with metadata
-- ✅ CLI with auto token refresh
+The CLI and web portal share the **same backend** — all data is consistent across interfaces.
+
+---
+
+## Development
+
+```bash
+npm run dev -- login         # run without building
+npm run build                # compile TypeScript
+npm test                     # run tests
 ```

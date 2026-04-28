@@ -1,261 +1,292 @@
 // src/commands/profiles.ts
+import fs from "fs";
+import path from "path";
 import { Command } from "commander";
-import chalk from "chalk";
-import Table from "cli-table3";
 import ora from "ora";
-import { APIService } from "../services/api.js";
-import { StorageService } from "../services/storage.js";
+import chalk from "chalk";
+import { apiRequest } from "../utils/apiClient.js";
+import {
+  printProfilesTable,
+  printProfileDetail,
+  printSuccess,
+  printError,
+  printInfo,
+  type Profile,
+  type PaginationMeta,
+} from "../utils/display.js";
 
-const API_URL = process.env.INSIGHTA_API_URL || "http://localhost:3000";
+// ─── profiles list ──────────────────────────────────────────────────────────
 
-export function registerProfileCommands(program: Command) {
-  const profilesCmd = program
+interface ListOptions {
+  gender?: string;
+  country?: string;
+  ageGroup?: string;
+  minAge?: string;
+  maxAge?: string;
+  sortBy?: string;
+  order?: string;
+  page?: string;
+  limit?: string;
+}
+
+export async function profilesListCommand(opts: ListOptions): Promise<void> {
+  const spinner = ora("Fetching profiles…").start();
+
+  try {
+    const query: Record<string, string | number | undefined> = {};
+
+    if (opts.gender) query.gender = opts.gender;
+    if (opts.country) query.country_id = opts.country;
+    if (opts.ageGroup) query.age_group = opts.ageGroup;
+    if (opts.minAge) query.min_age = opts.minAge;
+    if (opts.maxAge) query.max_age = opts.maxAge;
+    if (opts.sortBy) query.sort_by = opts.sortBy;
+    if (opts.order) query.order = opts.order;
+    if (opts.page) query.page = opts.page;
+    if (opts.limit) query.limit = opts.limit;
+
+    const { data, raw } = await apiRequest<Profile[]>("GET", "/api/profiles", {
+      query,
+      isProfileRoute: true,
+    });
+
+    spinner.stop();
+
+    const meta: PaginationMeta | undefined =
+      raw.page !== undefined
+        ? {
+            page: raw.page!,
+            limit: raw.limit!,
+            total: raw.total!,
+            total_pages: raw.total_pages!,
+            links: raw.links!,
+          }
+        : undefined;
+
+    printProfilesTable(data, meta);
+  } catch (error: any) {
+    spinner.fail("Failed to fetch profiles");
+    printError(error.message);
+    process.exit(1);
+  }
+}
+
+// ─── profiles get <id> ──────────────────────────────────────────────────────
+
+export async function profilesGetCommand(id: string): Promise<void> {
+  const spinner = ora(`Fetching profile ${chalk.cyan(id)}…`).start();
+
+  try {
+    const { data } = await apiRequest<Profile>(
+      "GET",
+      `/api/profiles/${id}`,
+      { isProfileRoute: true },
+    );
+
+    spinner.stop();
+    printProfileDetail(data);
+  } catch (error: any) {
+    spinner.fail("Profile not found");
+    printError(error.message);
+    process.exit(1);
+  }
+}
+
+// ─── profiles search <query> ────────────────────────────────────────────────
+
+interface SearchOptions {
+  page?: string;
+  limit?: string;
+}
+
+export async function profilesSearchCommand(
+  query: string,
+  opts: SearchOptions,
+): Promise<void> {
+  const spinner = ora(`Searching: "${chalk.italic(query)}"…`).start();
+
+  try {
+    const params: Record<string, string | number | undefined> = { q: query };
+    if (opts.page) params.page = opts.page;
+    if (opts.limit) params.limit = opts.limit;
+
+    const { data, raw } = await apiRequest<Profile[]>(
+      "GET",
+      "/api/profiles/search",
+      { query: params, isProfileRoute: true },
+    );
+
+    spinner.stop();
+
+    console.log(chalk.dim(`  Query: "${query}"`));
+    console.log();
+
+    const meta: PaginationMeta | undefined =
+      raw.page !== undefined
+        ? {
+            page: raw.page!,
+            limit: raw.limit!,
+            total: raw.total!,
+            total_pages: raw.total_pages!,
+            links: raw.links!,
+          }
+        : undefined;
+
+    printProfilesTable(data, meta);
+  } catch (error: any) {
+    spinner.fail("Search failed");
+    printError(error.message);
+    process.exit(1);
+  }
+}
+
+// ─── profiles create ────────────────────────────────────────────────────────
+
+interface CreateOptions {
+  name: string;
+}
+
+export async function profilesCreateCommand(
+  opts: CreateOptions,
+): Promise<void> {
+  if (!opts.name || !opts.name.trim()) {
+    printError("Name is required. Use: insighta profiles create --name \"Full Name\"");
+    process.exit(1);
+  }
+
+  const spinner = ora(
+    `Creating profile for ${chalk.bold(opts.name)}… (this may take a few seconds)`,
+  ).start();
+
+  try {
+    const { data } = await apiRequest<Profile>("POST", "/api/profiles", {
+      body: { name: opts.name.trim() },
+      isProfileRoute: true,
+    });
+
+    spinner.succeed(`Profile created for ${chalk.bold(data.name)}`);
+    console.log();
+    printProfileDetail(data);
+  } catch (error: any) {
+    spinner.fail("Failed to create profile");
+    printError(error.message);
+    process.exit(1);
+  }
+}
+
+// ─── profiles export ────────────────────────────────────────────────────────
+
+interface ExportOptions {
+  format: string;
+  gender?: string;
+  country?: string;
+  ageGroup?: string;
+  minAge?: string;
+  maxAge?: string;
+  sortBy?: string;
+  order?: string;
+}
+
+export async function profilesExportCommand(
+  opts: ExportOptions,
+): Promise<void> {
+  if (opts.format !== "csv") {
+    printError("Only CSV format is currently supported.");
+    process.exit(1);
+  }
+
+  const spinner = ora("Exporting profiles as CSV…").start();
+
+  try {
+    const query: Record<string, string | number | undefined> = {
+      format: "csv",
+    };
+
+    if (opts.gender) query.gender = opts.gender;
+    if (opts.country) query.country_id = opts.country;
+    if (opts.ageGroup) query.age_group = opts.ageGroup;
+    if (opts.minAge) query.min_age = opts.minAge;
+    if (opts.maxAge) query.max_age = opts.maxAge;
+    if (opts.sortBy) query.sort_by = opts.sortBy;
+    if (opts.order) query.order = opts.order;
+
+    const { data: csvContent } = await apiRequest<string>(
+      "GET",
+      "/api/profiles/export",
+      { query, isProfileRoute: true, responseType: "text" },
+    );
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const filename = `profiles_${timestamp}.csv`;
+    const outputPath = path.join(process.cwd(), filename);
+
+    fs.writeFileSync(outputPath, csvContent as string, "utf-8");
+
+    spinner.succeed("Export complete");
+    printSuccess(`Saved to: ${chalk.cyan(outputPath)}`);
+  } catch (error: any) {
+    spinner.fail("Export failed");
+    printError(error.message);
+    process.exit(1);
+  }
+}
+
+// ─── Register commands ──────────────────────────────────────────────────────
+
+export function registerProfileCommands(program: Command): void {
+  const profiles = program
     .command("profiles")
-    .description("Manage profiles");
+    .description("Manage and query profiles");
 
-  // List profiles
-  profilesCmd
+  profiles
     .command("list")
-    .description("List profiles with filters")
-    .option("-g, --gender <gender>", "Filter by gender (male/female)")
-    .option("-c, --country <country>", "Filter by country code")
+    .description("List all profiles with optional filters")
+    .option("--gender <gender>", "Filter by gender (male|female)")
+    .option("--country <code>", "Filter by country ISO code (e.g. NG)")
     .option(
-      "-a, --age-group <group>",
-      "Filter by age group (child/teenager/adult/senior)",
+      "--age-group <group>",
+      "Filter by age group (teenager|adult|senior)",
     )
-    .option("--min-age <age>", "Minimum age", parseInt)
-    .option("--max-age <age>", "Maximum age", parseInt)
+    .option("--min-age <age>", "Filter by minimum age")
+    .option("--max-age <age>", "Filter by maximum age")
     .option(
       "--sort-by <field>",
-      "Sort field (age/created_at/gender_probability)",
+      "Sort field (age|created_at|gender_probability)",
+      "created_at",
     )
-    .option("--order <order>", "Sort order (asc/desc)")
-    .option("-p, --page <page>", "Page number", parseInt)
-    .option("-l, --limit <limit>", "Items per page", parseInt)
-    .action(async (options) => {
-      const spinner = ora("Fetching profiles...").start();
+    .option("--order <dir>", "Sort direction (asc|desc)", "asc")
+    .option("--page <n>", "Page number", "1")
+    .option("--limit <n>", "Results per page (max 50)", "10")
+    .action(profilesListCommand);
 
-      try {
-        const api = new APIService(API_URL);
-        const params: any = {};
-
-        if (options.gender) params.gender = options.gender;
-        if (options.country) params.country_id = options.country;
-        if (options.ageGroup) params.age_group = options.ageGroup;
-        if (options.minAge) params.min_age = options.minAge;
-        if (options.maxAge) params.max_age = options.maxAge;
-        if (options.sortBy) params.sort_by = options.sortBy;
-        if (options.order) params.order = options.order;
-        if (options.page) params.page = options.page;
-        if (options.limit) params.limit = options.limit;
-
-        const result = await api.get("/api/profiles", params);
-
-        spinner.succeed(`Found ${result.total} profiles`);
-
-        if (result.data.length === 0) {
-          console.log(chalk.yellow("\nNo profiles found"));
-          return;
-        }
-
-        // Display table
-        const table = new Table({
-          head: ["ID", "Name", "Gender", "Age", "Age Group", "Country"],
-          colWidths: [36, 20, 10, 8, 12, 15],
-        });
-
-        result.data.forEach((profile: any) => {
-          table.push([
-            profile.id.substring(0, 8) + "...",
-            profile.name,
-            profile.gender,
-            profile.age,
-            profile.age_group,
-            profile.country_name,
-          ]);
-        });
-
-        console.log(table.toString());
-        console.log(
-          chalk.dim(
-            `\nPage ${result.page} of ${result.total_pages} | Total: ${result.total} profiles`,
-          ),
-        );
-      } catch (error: any) {
-        spinner.fail("Failed to fetch profiles");
-        console.error(
-          chalk.red(error.response?.data?.message || error.message),
-        );
-      }
-    });
-
-  // Get profile by ID
-  profilesCmd
+  profiles
     .command("get <id>")
-    .description("Get profile by ID")
-    .action(async (id) => {
-      const spinner = ora("Fetching profile...").start();
+    .description("Get a profile by ID")
+    .action(profilesGetCommand);
 
-      try {
-        const api = new APIService(API_URL);
-        const result = await api.get(`/api/profiles/${id}`);
+  profiles
+    .command("search <query>")
+    .description('Search profiles using natural language (e.g. "young males from nigeria")')
+    .option("--page <n>", "Page number", "1")
+    .option("--limit <n>", "Results per page", "10")
+    .action(profilesSearchCommand);
 
-        spinner.succeed("Profile found");
-
-        const profile = result.data;
-        console.log(chalk.bold("\n📊 Profile Details:"));
-        console.log(chalk.cyan(`   ID: ${profile.id}`));
-        console.log(chalk.cyan(`   Name: ${profile.name}`));
-        console.log(
-          chalk.cyan(
-            `   Gender: ${profile.gender} (${(profile.gender_probability * 100).toFixed(1)}%)`,
-          ),
-        );
-        console.log(
-          chalk.cyan(`   Age: ${profile.age} (${profile.age_group})`),
-        );
-        console.log(
-          chalk.cyan(
-            `   Country: ${profile.country_name} (${profile.country_id})`,
-          ),
-        );
-        console.log(chalk.cyan(`   Sample Size: ${profile.sample_size}`));
-        console.log(
-          chalk.cyan(
-            `   Created: ${new Date(profile.created_at).toLocaleString()}`,
-          ),
-        );
-      } catch (error: any) {
-        spinner.fail("Failed to fetch profile");
-        console.error(
-          chalk.red(error.response?.data?.message || error.message),
-        );
-      }
-    });
-
-  // Create profile (admin only)
-  profilesCmd
+  profiles
     .command("create")
     .description("Create a new profile (admin only)")
-    .requiredOption("-n, --name <name>", "Person's name")
-    .action(async (options) => {
-      const spinner = ora("Creating profile...").start();
+    .requiredOption("--name <name>", "Full name for the profile")
+    .action(profilesCreateCommand);
 
-      try {
-        const api = new APIService(API_URL);
-        const result = await api.post("/api/profiles", { name: options.name });
-
-        spinner.succeed("Profile created successfully");
-
-        const profile = result.data;
-        console.log(chalk.green(`\n✅ Created profile for ${profile.name}`));
-        console.log(chalk.dim(`   ID: ${profile.id}`));
-      } catch (error: any) {
-        spinner.fail("Failed to create profile");
-        console.error(
-          chalk.red(error.response?.data?.message || error.message),
-        );
-      }
-    });
-
-  // Search profiles with NLP
-  profilesCmd
-    .command("search <query>")
-    .description("Search profiles using natural language")
-    .option("-p, --page <page>", "Page number", parseInt)
-    .option("-l, --limit <limit>", "Items per page", parseInt)
-    .action(async (query, options) => {
-      const spinner = ora("Searching...").start();
-
-      try {
-        const api = new APIService(API_URL);
-        const params: any = { q: query };
-        if (options.page) params.page = options.page;
-        if (options.limit) params.limit = options.limit;
-
-        const result = await api.get("/api/profiles/search", params);
-
-        spinner.succeed(`Found ${result.total} matching profiles`);
-
-        if (result.data.length === 0) {
-          console.log(chalk.yellow("\nNo profiles match your search"));
-          return;
-        }
-
-        const table = new Table({
-          head: ["Name", "Gender", "Age", "Country"],
-          colWidths: [20, 10, 8, 15],
-        });
-
-        result.data.forEach((profile: any) => {
-          table.push([
-            profile.name,
-            profile.gender,
-            profile.age,
-            profile.country_name,
-          ]);
-        });
-
-        console.log(table.toString());
-        console.log(chalk.dim(`\nQuery: "${query}"`));
-      } catch (error: any) {
-        spinner.fail("Search failed");
-        console.error(
-          chalk.red(error.response?.data?.message || error.message),
-        );
-      }
-    });
-
-  // Export profiles
-  profilesCmd
+  profiles
     .command("export")
-    .description("Export profiles to CSV")
-    .option("-f, --format <format>", "Export format (csv)", "csv")
-    .option("-g, --gender <gender>", "Filter by gender")
-    .option("-c, --country <country>", "Filter by country code")
-    .action(async (options) => {
-      const spinner = ora("Exporting profiles...").start();
-
-      try {
-        const api = new APIService(API_URL);
-        const params: any = { format: options.format };
-        if (options.gender) params.gender = options.gender;
-        if (options.country) params.country_id = options.country;
-
-        const response = await api.get("/api/profiles/export", params);
-
-        // Save to file
-        const filename = `profiles_${Date.now()}.csv`;
-        const fs = await import("fs");
-        fs.writeFileSync(filename, response);
-
-        spinner.succeed(`Exported to ${filename}`);
-        console.log(chalk.green(`\n✅ Saved to ${process.cwd()}/${filename}`));
-      } catch (error: any) {
-        spinner.fail("Export failed");
-        console.error(
-          chalk.red(error.response?.data?.message || error.message),
-        );
-      }
-    });
-
-  // Delete profile (admin only)
-  profilesCmd
-    .command("delete <id>")
-    .description("Delete a profile (admin only)")
-    .action(async (id) => {
-      const spinner = ora("Deleting profile...").start();
-
-      try {
-        const api = new APIService(API_URL);
-        await api.delete(`/api/profiles/${id}`);
-
-        spinner.succeed("Profile deleted successfully");
-      } catch (error: any) {
-        spinner.fail("Failed to delete profile");
-        console.error(
-          chalk.red(error.response?.data?.message || error.message),
-        );
-      }
-    });
+    .description("Export profiles to a file")
+    .requiredOption("--format <fmt>", "Export format (csv)")
+    .option("--gender <gender>", "Filter by gender")
+    .option("--country <code>", "Filter by country ISO code")
+    .option("--age-group <group>", "Filter by age group")
+    .option("--min-age <age>", "Minimum age filter")
+    .option("--max-age <age>", "Maximum age filter")
+    .option("--sort-by <field>", "Sort field")
+    .option("--order <dir>", "Sort direction (asc|desc)")
+    .action(profilesExportCommand);
 }
