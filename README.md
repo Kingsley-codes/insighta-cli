@@ -1,16 +1,38 @@
 # Insighta Labs+ CLI
 
-A command-line interface for the **Insighta Labs+ Profile Intelligence System**.
+A terminal client for the **Insighta Labs+ Profile Intelligence System**.
+
+The CLI enables authentication, profile discovery, profile creation, and CSV export for user profiles managed by the Insighta backend.
+
+## Features
+
+- GitHub OAuth login with PKCE flow
+- Email/password authentication
+- User signup with role selection (`analyst` or `admin`)
+- `whoami` user inspection
+- Profile listing with filters and pagination
+- Natural language profile search
+- Profile retrieval by ID
+- Profile creation (admin only)
+- CSV export of profile data
+- Automatic access token refresh on expired sessions
+- Secure local credential storage at `~/.insighta/credentials.json`
+
+## Requirements
+
+- Node.js 18 or newer
+- npm
+- A running Insighta backend API
 
 ## Installation
 
 ```bash
 npm install
 npm run build
-npm link          # makes `insighta` available globally
+npm link
 ```
 
-Or install directly:
+Or install globally from the repository root:
 
 ```bash
 npm install -g .
@@ -18,72 +40,64 @@ npm install -g .
 
 ## Configuration
 
-Copy `.env.example` to `.env` and set the backend URL:
+The CLI reads the backend URL from the environment variable `INSIGHTA_API_URL`.
+
+Create a `.env` file in the repo root:
 
 ```bash
 cp .env.example .env
-# Edit .env:
-INSIGHTA_API_URL=https://your-backend-url.com
 ```
 
----
+Then set:
 
-## Authentication
+```env
+INSIGHTA_API_URL=https://hng-stage-1-production-7d03.up.railway.app
+```
 
-### Login with GitHub OAuth
+If not provided, the default backend URL is `https://hng-stage-1-production-7d03.up.railway.app`.
+
+## Usage
+
+### Authenticate
+
+#### GitHub OAuth
 
 ```bash
 insighta login
 ```
 
-- Generates PKCE `code_verifier` + `code_challenge` locally
-- Starts a temporary local callback server on port `9876`
-- Opens GitHub OAuth in your browser
-- On callback, exchanges the code with the backend using your `code_verifier`
-- Saves tokens to `~/.insighta/credentials.json` (mode `600`)
+This opens GitHub in your browser and uses a local callback server on port `9876`.
 
-### Login with Email/Password
+#### Email and password
 
 ```bash
 insighta login-email -e user@example.com -p password
 ```
 
-Authenticates using email and password credentials.
-
-### Create Account
+#### Create a new account
 
 ```bash
 insighta signup -e user@example.com -p password -u username -r analyst
 insighta signup -e user@example.com -p password -u username -r admin -n "Full Name"
 ```
 
-Creates a new user account. Requires email, password, username, and role. Full name is optional.
-
-### Logout
+#### Logout
 
 ```bash
 insighta logout
 ```
 
-Revokes the refresh token server-side and clears local credentials.
-
-### Refresh Tokens
+#### Refresh tokens
 
 ```bash
 insighta refresh
 ```
 
-Manually refreshes access tokens. (Automatic refresh happens on 401 responses.)
-
-### Whoami
+#### Current user
 
 ```bash
 insighta whoami
 ```
-
-Displays the currently authenticated user's info.
-
----
 
 ## Profile Commands
 
@@ -98,19 +112,17 @@ insighta profiles list --sort-by age --order desc
 insighta profiles list --page 2 --limit 20
 ```
 
-**Options:**
+Options:
 
-| Flag | Description |
-|------|-------------|
-| `--gender` | Filter by `male` or `female` |
-| `--country` | Filter by ISO country code (e.g. `NG`, `KE`) |
-| `--age-group` | Filter by `teenager`, `adult`, or `senior` |
-| `--min-age` | Minimum age |
-| `--max-age` | Maximum age |
-| `--sort-by` | `age`, `created_at`, or `gender_probability` |
-| `--order` | `asc` or `desc` |
-| `--page` | Page number (default: 1) |
-| `--limit` | Results per page, max 50 (default: 10) |
+- `--gender <male|female>`
+- `--country <ISO code>`
+- `--age-group <teenager|adult|senior>`
+- `--min-age <age>`
+- `--max-age <age>`
+- `--sort-by <age|created_at|gender_probability>`
+- `--order <asc|desc>`
+- `--page <n>`
+- `--limit <n>`
 
 ### Get a profile by ID
 
@@ -118,13 +130,13 @@ insighta profiles list --page 2 --limit 20
 insighta profiles get <id>
 ```
 
-### Search using natural language
+### Search profiles
 
 ```bash
 insighta profiles search "young males from nigeria"
-insighta profiles search "females above 30"
-insighta profiles search "adult males from kenya"
 ```
+
+Use natural language queries to find matching profiles.
 
 ### Create a profile (admin only)
 
@@ -132,7 +144,7 @@ insighta profiles search "adult males from kenya"
 insighta profiles create --name "Amara Nwosu"
 ```
 
-Calls Genderize, Agify, and Nationalize APIs and stores the enriched profile.
+This sends a profile creation request to the backend, which enriches the profile data using external services.
 
 ### Export profiles to CSV
 
@@ -141,61 +153,47 @@ insighta profiles export --format csv
 insighta profiles export --format csv --gender male --country NG
 ```
 
-Saves the CSV to the current working directory as `profiles_<timestamp>.csv`.
-
----
+The export file is written to the current directory as `profiles_<timestamp>.csv`.
 
 ## Token Handling
 
-- **Access token**: short-lived (3 minutes)
-- **Refresh token**: slightly longer-lived (5 minutes)
-- **Auto-refresh**: on any `401` response, the CLI automatically attempts to refresh the access token using the stored refresh token
-- **Manual refresh**: use `insighta refresh` to manually refresh tokens
-- **Re-login prompt**: if refresh fails (token expired/revoked), credentials are cleared and the user is prompted to `insighta login` again
+- Access tokens are short-lived
+- Refresh tokens are used to renew access automatically
+- If a request returns `401`, the CLI attempts token refresh once
+- If refresh fails, credentials are cleared and re-authentication is required
 
-Credentials are stored at `~/.insighta/credentials.json` with permissions `600`.
+Credentials are stored securely in `~/.insighta/credentials.json` with mode `600`.
 
----
+## Role-Based Access
 
-## Role Enforcement
+| Command                    | Likely Role Required |
+| -------------------------- | -------------------- |
+| `insighta profiles list`   | `analyst` or `admin` |
+| `insighta profiles get`    | `analyst` or `admin` |
+| `insighta profiles search` | `analyst` or `admin` |
+| `insighta profiles export` | `analyst` or `admin` |
+| `insighta profiles create` | `admin` only         |
 
-| Command | Required Role |
-|---------|--------------|
-| `profiles list` | `analyst` or `admin` |
-| `profiles get` | `analyst` or `admin` |
-| `profiles search` | `analyst` or `admin` |
-| `profiles export` | `analyst` or `admin` |
-| `profiles create` | `admin` only |
-| `profiles delete` (API) | `admin` only |
+Role enforcement is handled by the backend API.
 
-The CLI passes the access token (which contains the role claim) on every request. The backend enforces RBAC — the CLI will surface a `403 Insufficient permissions` error if the user's role is insufficient.
+## Backend Integration
 
----
-
-## Architecture
-
-```
-insighta (CLI)
-    │
-    │  Bearer <access_token>
-    │  X-API-Version: 1.0
-    ▼
-Backend API  (Express + TypeScript)
-    │
-    ├── /auth/*        (GitHub OAuth + PKCE, Email/Password Auth, JWT issuance)
-    └── /api/profiles  (CRUD, search, export)
-```
-
-The CLI and web portal share the **same backend** — all data is consistent across interfaces.
-
----
+The CLI communicates with the configured backend API and sends the `X-API-Version: 1.0` header for profile routes.
 
 ## Development
 
+Run the CLI directly from source:
+
 ```bash
-npm run dev -- login                    # test GitHub OAuth
-npm run dev -- login-email -e test@example.com -p pass  # test email login
-npm run dev -- signup -e test@example.com -p pass -u testuser -r analyst  # test signup
-npm run build                           # compile TypeScript
-npm test                                # run tests
+npm install
+npm run dev -- login
+npm run dev -- login-email -e test@example.com -p pass
+npm run dev -- signup -e test@example.com -p pass -u testuser -r analyst
+```
+
+Build and test:
+
+```bash
+npm run build
+npm test
 ```
