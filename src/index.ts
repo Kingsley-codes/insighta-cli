@@ -33,7 +33,9 @@ program
   .description(
     chalk.bold("Insighta Labs+") +
       " — Profile Intelligence System CLI\n" +
-      chalk.dim("  Authenticate, query, and manage profiles from your terminal."),
+      chalk.dim(
+        "  Authenticate, query, and manage profiles from your terminal.",
+      ),
   )
   .version("1.0.0", "-v, --version", "Output the current version");
 
@@ -45,11 +47,11 @@ program.addHelpText(
   "after",
   `
 ${chalk.dim("Examples:")}
-  ${chalk.cyan("insighta login")}                                  Authenticate with GitHub
-  ${chalk.cyan("insighta profiles list")}                          List all profiles
-  ${chalk.cyan('insighta profiles list --gender male --country NG')}  Filter profiles
+  ${chalk.cyan("insighta login")}                                  Authenticate with GitHub  ${chalk.cyan("insighta login-email -e user@example.com -p pass")}  Login with email/password
+  ${chalk.cyan("insighta signup -e user@example.com -p pass -u username -r analyst")}  Create account  ${chalk.cyan("insighta profiles list")}                          List all profiles
+  ${chalk.cyan("insighta profiles list --gender male --country NG")}  Filter profiles
   ${chalk.cyan('insighta profiles search "young males from nigeria"')}  NLP search
-  ${chalk.cyan("insighta profiles create --name \"Amara Nwosu\"")}   Create a profile (admin)
+  ${chalk.cyan('insighta profiles create --name "Amara Nwosu"')}   Create a profile (admin)
   ${chalk.cyan("insighta profiles export --format csv")}             Export all profiles
   ${chalk.cyan("insighta whoami")}                                 Show current user
 `,

@@ -30,7 +30,7 @@ INSIGHTA_API_URL=https://your-backend-url.com
 
 ## Authentication
 
-### Login
+### Login with GitHub OAuth
 
 ```bash
 insighta login
@@ -42,6 +42,23 @@ insighta login
 - On callback, exchanges the code with the backend using your `code_verifier`
 - Saves tokens to `~/.insighta/credentials.json` (mode `600`)
 
+### Login with Email/Password
+
+```bash
+insighta login-email -e user@example.com -p password
+```
+
+Authenticates using email and password credentials.
+
+### Create Account
+
+```bash
+insighta signup -e user@example.com -p password -u username -r analyst
+insighta signup -e user@example.com -p password -u username -r admin -n "Full Name"
+```
+
+Creates a new user account. Requires email, password, username, and role. Full name is optional.
+
 ### Logout
 
 ```bash
@@ -49,6 +66,14 @@ insighta logout
 ```
 
 Revokes the refresh token server-side and clears local credentials.
+
+### Refresh Tokens
+
+```bash
+insighta refresh
+```
+
+Manually refreshes access tokens. (Automatic refresh happens on 401 responses.)
 
 ### Whoami
 
@@ -125,6 +150,7 @@ Saves the CSV to the current working directory as `profiles_<timestamp>.csv`.
 - **Access token**: short-lived (3 minutes)
 - **Refresh token**: slightly longer-lived (5 minutes)
 - **Auto-refresh**: on any `401` response, the CLI automatically attempts to refresh the access token using the stored refresh token
+- **Manual refresh**: use `insighta refresh` to manually refresh tokens
 - **Re-login prompt**: if refresh fails (token expired/revoked), credentials are cleared and the user is prompted to `insighta login` again
 
 Credentials are stored at `~/.insighta/credentials.json` with permissions `600`.
@@ -156,7 +182,7 @@ insighta (CLI)
     ▼
 Backend API  (Express + TypeScript)
     │
-    ├── /auth/*        (GitHub OAuth + PKCE, JWT issuance)
+    ├── /auth/*        (GitHub OAuth + PKCE, Email/Password Auth, JWT issuance)
     └── /api/profiles  (CRUD, search, export)
 ```
 
@@ -167,7 +193,9 @@ The CLI and web portal share the **same backend** — all data is consistent acr
 ## Development
 
 ```bash
-npm run dev -- login         # run without building
-npm run build                # compile TypeScript
-npm test                     # run tests
+npm run dev -- login                    # test GitHub OAuth
+npm run dev -- login-email -e test@example.com -p pass  # test email login
+npm run dev -- signup -e test@example.com -p pass -u testuser -r analyst  # test signup
+npm run build                           # compile TypeScript
+npm test                                # run tests
 ```

@@ -292,6 +292,152 @@ export async function logoutCommand(): Promise<void> {
   spinner.succeed("Logged out successfully");
 }
 
+export async function signupCommand(
+  email: string,
+  password: string,
+  username: string,
+  role: string,
+  fullName?: string,
+): Promise<void> {
+  const existing = loadCredentials();
+  if (existing) {
+    printInfo(
+      `Already logged in as ${chalk.bold("@" + existing.user.username)}. ` +
+        `Run ${chalk.cyan("insighta logout")} first to create a new account.`,
+    );
+    return;
+  }
+
+  const spinner = ora("Creating your account…").start();
+
+  try {
+    const response = await fetch(`${API_URL}/auth/signup`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email,
+        password,
+        username,
+        full_name: fullName,
+        role,
+      }),
+    });
+
+    const data = await response.json();
+
+    if (data.status !== "success") {
+      throw new Error(data.message || "Failed to create account");
+    }
+
+    spinner.succeed("Account created successfully");
+    printSuccess(
+      `Welcome ${chalk.bold.green(username)}! ` +
+        `Please check your email for verification instructions.`,
+    );
+  } catch (error: any) {
+    spinner.fail("Signup failed");
+    printError(error.message || "Unknown error during signup");
+    process.exitCode = 1;
+  }
+}
+
+export async function loginEmailCommand(
+  email: string,
+  password: string,
+): Promise<void> {
+  const existing = loadCredentials();
+  if (existing) {
+    printInfo(
+      `Already logged in as ${chalk.bold("@" + existing.user.username)}. ` +
+        `Run ${chalk.cyan("insighta logout")} first to switch accounts.`,
+    );
+    return;
+  }
+
+  const spinner = ora("Logging in…").start();
+
+  try {
+    const response = await fetch(`${API_URL}/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email,
+        password,
+        clientType: "cli",
+      }),
+    });
+
+    const data = await response.json();
+
+    if (data.status !== "success") {
+      throw new Error(data.message || "Login failed");
+    }
+
+    // Save credentials
+    saveCredentials({
+      access_token: data.data.access_token,
+      refresh_token: data.data.refresh_token,
+      user: data.data.user,
+      saved_at: new Date().toISOString(),
+    });
+
+    spinner.succeed("Login successful");
+
+    const creds = loadCredentials();
+    if (creds) {
+      console.log();
+      printSuccess(
+        `Logged in as ${chalk.bold.green("@" + creds.user.username)} ` +
+          chalk.dim(`(${creds.user.role})`),
+      );
+    }
+  } catch (error: any) {
+    spinner.fail("Login failed");
+    printError(error.message || "Unknown error during login");
+    process.exitCode = 1;
+  }
+}
+
+export async function refreshCommand(): Promise<void> {
+  const creds = loadCredentials();
+
+  if (!creds) {
+    printError("Not authenticated. Run `insighta login` first.");
+    process.exitCode = 1;
+    return;
+  }
+
+  const spinner = ora("Refreshing tokens…").start();
+
+  try {
+    const response = await fetch(`${API_URL}/auth/refresh`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token: creds.refresh_token }),
+    });
+
+    const data = await response.json();
+
+    if (data.status !== "success") {
+      throw new Error(data.message || "Failed to refresh tokens");
+    }
+
+    // Update credentials
+    saveCredentials({
+      ...creds,
+      access_token: data.data.access_token,
+      refresh_token: data.data.refresh_token,
+      saved_at: new Date().toISOString(),
+    });
+
+    spinner.succeed("Tokens refreshed successfully");
+  } catch (error: any) {
+    spinner.fail("Token refresh failed");
+    printError(error.message || "Unknown error during token refresh");
+    process.exitCode = 1;
+  }
+}
+
 export async function whoamiCommand(): Promise<void> {
   const creds = loadCredentials();
 
@@ -346,9 +492,39 @@ export function registerAuthCommands(program: Command): void {
     .action(loginCommand);
 
   program
+    .command("login-email")
+    .description("Authenticate with email and password")
+    .requiredOption("-e, --email <email>", "User email address")
+    .requiredOption("-p, --password <password>", "User password")
+    .action((options) => loginEmailCommand(options.email, options.password));
+
+  program
+    .command("signup")
+    .description("Create a new account with email and password")
+    .requiredOption("-e, --email <email>", "User email address")
+    .requiredOption("-p, --password <password>", "User password")
+    .requiredOption("-u, --username <username>", "Username")
+    .requiredOption("-r, --role <role>", "User role (analyst or admin)")
+    .option("-n, --full-name <fullName>", "Full name (optional)")
+    .action((options) =>
+      signupCommand(
+        options.email,
+        options.password,
+        options.username,
+        options.role,
+        options.fullName,
+      ),
+    );
+
+  program
     .command("logout")
     .description("Revoke session and clear local credentials")
     .action(logoutCommand);
+
+  program
+    .command("refresh")
+    .description("Manually refresh access tokens")
+    .action(refreshCommand);
 
   program
     .command("whoami")
